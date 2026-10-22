@@ -2,7 +2,7 @@ import { requireElad } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { STATUS_COLORS, roleLabel, statusClass, type Profile } from "@/lib/constants";
 import { getStatuses } from "@/lib/statuses";
-import { setUserSites, addSite, addStatus, deleteSite, deleteStatus, deleteUser, renameSite, resetPassword, updateStatus } from "../actions";
+import { deleteAllTasks, setUserSites, addSite, addStatus, deleteSite, deleteStatus, deleteUser, renameSite, resetPassword, updateStatus } from "../actions";
 import { NewUserForm } from "./NewUserForm";
 
 export default async function SettingsPage() {
@@ -127,6 +127,17 @@ export default async function SettingsPage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="rounded-lg border border-red-200 bg-white p-5 shadow-sm lg:col-span-2">
+        <h2 className="mb-1 font-bold text-red-700">מחיקת כל המשימות</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          מוחק את כל המשימות ({usage?.length ?? 0}) יחד עם ההתכתבות וההיסטוריה שלהן. אי אפשר לשחזר. אתרים, סטטוסים ומשתמשים לא נמחקים.
+        </p>
+        <form action={deleteAllTasks} className="flex flex-wrap items-center gap-2">
+          <input name="confirm" className="input !w-48" placeholder='הקלד "מחק הכל"' autoComplete="off" required />
+          <button className="btn-ghost text-red-600">מחיקת כל המשימות</button>
+        </form>
       </section>
     </div>
   );

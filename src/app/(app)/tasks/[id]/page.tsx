@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getUserSiteIds, requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { roleLabel, statusClass, type Role, type Task } from "@/lib/constants";
+import { statusClass, type Task } from "@/lib/constants";
 import { getStatuses } from "@/lib/statuses";
 import { addComment, deleteTask, updateTask } from "../../actions";
 
@@ -43,7 +43,7 @@ export default async function TaskPage({
   ]);
   const who = (aid: string | null) => {
     const p = people?.find((p) => p.id === aid);
-    return p ? `${p.full_name || p.username} (${roleLabel(p.role as Role)})` : "משתמש שנמחק";
+    return p ? (p.full_name.trim().split(/\s+/)[0] || p.username) : "משתמש שנמחק"; // first name only
   };
 
   const isElad = user.role === "elad";

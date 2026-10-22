@@ -250,3 +250,12 @@ export async function setUserSites(userId: string, formData: FormData) {
   if (siteIds.length) await db.from("user_sites").insert(siteIds.map((site_id) => ({ user_id: userId, site_id })));
   revalidatePath("/settings");
 }
+
+// Wipes every task (and, by cascade, its history and messages). Requires typing the confirmation word.
+export async function deleteAllTasks(formData: FormData) {
+  await requireElad();
+  if (str(formData, "confirm") !== "מחק הכל") return;
+  await createAdminClient().from("tasks").delete().gt("id", 0);
+  revalidatePath("/tasks");
+  revalidatePath("/settings");
+}
