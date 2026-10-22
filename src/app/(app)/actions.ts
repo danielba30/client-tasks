@@ -259,3 +259,71 @@ export async function deleteAllTasks(formData: FormData) {
   revalidatePath("/tasks");
   revalidatePath("/settings");
 }
+
+// ---------- Inline edits from the task list ----------
+
+export interface QuickPatch {
+  status_id?: number;
+  estimated_hours?: number | null;
+  actual_hours?: number | null;
+  billed?: boolean;
+}
+
+export async function quickUpdateTask(taskId: number, input: QuickPatch): Promise<{ error?: string }> {
+  const user = await requireUser();
+  const db = createAdminClient();
+  const { data: task } = await db.from("tasks").select("*").eq("id", taskId).single<Task>();
+  if (!task) return { error: "המשימה לא נמצאה" };
+  if (user.role === "client" && !(task.site_id && (await getUserSiteIds(user.id)).includes(task.site_id))) {
+    return { error: "אין הרשאה" };
+  }
+
+  const patch: Record<string, unknown> = {};
+  const log: string[] = [];
+
+  if (input.status_id !== undefined && input.status_id !== task.status_id) {
+    const statuses = await getStatuses();
+    const from = statuses.find((s) => s.id === task.status_id);
+    const to = statuses.find((s) => s.id === input.status_id);
+    if (!to || !(user.role === "elad" || (from?.awaiting_client && to.client_selectable))) {
+      return { error: "אין הרשאה לשנות לסטטוס הזה" };
+    }
+    patch.status_id = to.id;
+    log.push(`סטטוס: ${from?.name ?? "—"} ← ${to.name}`);
+  }
+
+  if (user.role === "elad") {
+    const hours = (v: number | null | undefined) => (v == null || Number.isNaN(v) || v < 0 ? null : v);
+    if (input.estimated_hours !== undefined && hours(input.estimated_hours) !== task.estimated_hours) {
+      patch.estimated_hours = hours(input.estimated_hours);
+      log.push(`הערכת שעות: ${task.estimated_hours ?? "—"} ← ${patch.estimated_hours ?? "—"}`);
+    }
+    if (input.actual_hours !== undefined && hours(input.actual_hours) !== task.actual_hours) {
+      patch.actual_hours = hours(input.actual_hours);
+      log.push(`שעות בפועל: ${task.actual_hours ?? "—"} ← ${patch.actual_hours ?? "—"}`);
+    }
+    if (input.billed !== undefined && input.billed !== task.billed) {
+      patch.billed = input.billed;
+      log.push(input.billed ? "סומן כמחויב" : "סומן כלא מחויב");
+    }
+  } else if (input.estimated_hours !== undefined || input.actual_hours !== undefined || input.billed !== undefined) {
+    return { error: "אין הרשאה" };
+  }
+
+  if (log.length) {
+    patch.updated_at = new Date().toISOString();
+    await db.from("tasks").update(patch).eq("id", taskId);
+    await db.from("task_events").insert(log.map((body) => ({ task_id: taskId, author_id: user.id, kind: "change", body })));
+  }
+  return {};
+}
+
+export async function deleteTasks(ids: number[]): Promise<{ error?: string }> {
+  await requireElad();
+  const clean = ids.filter((n) => Number.isInteger(n) && n > 0);
+  if (!clean.length) return {};
+  const { error } = await createAdminClient().from("tasks").delete().in("id", clean);
+  if (error) return { error: "המחיקה נכשלה" };
+  revalidatePath("/tasks");
+  return {};
+}
