@@ -1,0 +1,55 @@
+"use client";
+
+import Link from "next/link";
+import { useActionState } from "react";
+import { importTasks, type ImportState } from "./actions";
+
+export function ImportForm({
+  clients,
+  sites,
+}: {
+  clients: { id: string; name: string }[];
+  sites: { id: number; name: string }[];
+}) {
+  const [state, action, pending] = useActionState(importTasks, {} as ImportState);
+
+  return (
+    <form action={action} className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label">לקוח</label>
+          <select name="client_id" className="input" required defaultValue="">
+            <option value="" disabled>בחר לקוח</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">אתר (יוחל על כל המשימות בקובץ)</label>
+          <select name="site_id" className="input" defaultValue="">
+            <option value="">ללא</option>
+            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="label">קובץ אקסל (.xlsx), נקרא הטאב הראשון בלבד</label>
+        <input name="file" type="file" accept=".xlsx" className="input" required />
+      </div>
+      <button className="btn" disabled={pending}>{pending ? "מייבא…" : "ייבוא"}</button>
+
+      {state.error && <p className="text-sm text-red-600">{state.error}</p>}
+      {state.imported !== undefined && (
+        <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">
+          יובאו {state.imported} משימות
+          {state.skipped ? `, דולגו ${state.skipped} שכבר קיימות` : ""}.{" "}
+          <Link href="/tasks" className="underline">למשימות</Link>
+          {!!state.unknownStatuses?.length && (
+            <p className="mt-1 text-amber-800">
+              סטטוסים לא מוכרים הוגדרו כ"ממתין לאישור לקוח": {state.unknownStatuses.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+    </form>
+  );
+}

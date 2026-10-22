@@ -36,7 +36,8 @@ export default async function TasksPage({
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="text-xl font-bold">משימות</h1>
-        <Link href="/tasks/new" className="btn ms-auto">+ משימה חדשה</Link>
+        {user.role === "elad" && <Link href="/tasks/import" className="btn-ghost ms-auto">ייבוא מאקסל</Link>}
+        <Link href="/tasks/new" className={user.role === "elad" ? "btn" : "btn ms-auto"}>+ משימה חדשה</Link>
       </div>
 
       <form className="mb-4 flex flex-wrap gap-2">
