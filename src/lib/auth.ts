@@ -27,3 +27,9 @@ export async function requireElad(): Promise<Profile> {
   if (user.role !== "elad") redirect("/tasks");
   return user;
 }
+
+// Sites a client user may see (clients are tied to sites; Elad sees everything).
+export async function getUserSiteIds(userId: string): Promise<number[]> {
+  const { data } = await createAdminClient().from("user_sites").select("site_id").eq("user_id", userId);
+  return (data ?? []).map((r) => r.site_id as number);
+}

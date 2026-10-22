@@ -16,14 +16,36 @@ create table public.sites (
   created_at timestamptz not null default now()
 );
 
+create table public.user_sites (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  site_id bigint not null references public.sites(id) on delete cascade,
+  primary key (user_id, site_id)
+);
+
+create table public.statuses (
+  id bigint generated always as identity primary key,
+  name text not null unique,
+  color text not null default 'gray',
+  sort_order int not null default 0,
+  is_default boolean not null default false,        -- status for new / imported tasks
+  awaiting_client boolean not null default false,   -- client may change the status of tasks in it
+  client_selectable boolean not null default false, -- client may move a task into it
+  created_at timestamptz not null default now()
+);
+
+insert into public.statuses (name, color, sort_order, is_default, awaiting_client, client_selectable) values
+  ('ממתין לאישור לקוח', 'amber',   1, true,  true,  false),
+  ('מאושר, ממתין',      'sky',     2, false, false, true),
+  ('בעבודה',            'indigo',  3, false, false, true),
+  ('בדיקות לקוח',       'purple',  4, false, true,  false),
+  ('עלה לייצור',        'emerald', 5, false, false, false);
+
 create table public.tasks (
   id bigint generated always as identity primary key,
   title text not null,
   subject text not null default '',
   site_id bigint references public.sites(id) on delete set null,
-  client_id uuid not null references public.profiles(id) on delete cascade,
-  status text not null default 'pending_approval'
-    check (status in ('pending_approval','approved_waiting','in_progress','client_testing','in_production')),
+  status_id bigint not null references public.statuses(id) on delete restrict,
   estimated_hours numeric(8,2),
   actual_hours numeric(8,2),
   billed boolean not null default false,
@@ -31,7 +53,7 @@ create table public.tasks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index tasks_client_idx on public.tasks(client_id);
+create index tasks_site_idx on public.tasks(site_id);
 
 -- Timeline: kind = 'comment' (correspondence) or 'change' (history log)
 create table public.task_events (
@@ -45,6 +67,8 @@ create table public.task_events (
 create index task_events_task_idx on public.task_events(task_id, created_at);
 
 alter table public.profiles enable row level security;
+alter table public.statuses enable row level security;
+alter table public.user_sites enable row level security;
 alter table public.sites enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_events enable row level security;

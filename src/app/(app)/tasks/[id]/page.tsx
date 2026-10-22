@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { getUserSiteIds, requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { STATUSES, roleLabel, statusColor, statusLabel, type Role, type Task } from "@/lib/constants";
+import { roleLabel, statusClass, type Role, type Task } from "@/lib/constants";
+import { getStatuses } from "@/lib/statuses";
 import { addComment, deleteTask, updateTask } from "../../actions";
 
 interface TaskEvent {
@@ -31,30 +32,28 @@ export default async function TaskPage({
 
   const db = createAdminClient();
   const { data: task } = await db.from("tasks").select("*").eq("id", taskId).single<Task>();
-  if (!task || (user.role === "client" && task.client_id !== user.id)) notFound();
+  if (!task) notFound();
+  if (user.role === "client" && !(task.site_id && (await getUserSiteIds(user.id)).includes(task.site_id))) notFound();
 
-  const [{ data: sites }, { data: events }, { data: people }] = await Promise.all([
+  const [{ data: sites }, { data: events }, { data: people }, statuses] = await Promise.all([
     db.from("sites").select("id, name").order("name"),
     db.from("task_events").select("*").eq("task_id", taskId).order("created_at").returns<TaskEvent[]>(),
     db.from("profiles").select("id, full_name, username, role"),
+    getStatuses(),
   ]);
   const who = (aid: string | null) => {
     const p = people?.find((p) => p.id === aid);
     return p ? `${p.full_name || p.username} (${roleLabel(p.role as Role)})` : "משתמש שנמחק";
   };
-  const client = people?.find((p) => p.id === task.client_id);
 
   const isElad = user.role === "elad";
   const showHistory = tab === "history";
   const items = events?.filter((e) => (showHistory ? e.kind === "change" : e.kind === "comment")) ?? [];
 
   // Statuses this user may move the task to (current one always included).
-  const allowed = STATUSES.filter(
-    (s) =>
-      isElad ||
-      s.value === task.status ||
-      (task.status === "pending_approval" && s.value === "approved_waiting") ||
-      (task.status === "client_testing" && s.value === "in_progress"),
+  const current = statuses.find((s) => s.id === task.status_id);
+  const allowed = statuses.filter(
+    (s) => isElad || s.id === task.status_id || (current?.awaiting_client && s.client_selectable),
   );
 
   return (
@@ -63,8 +62,7 @@ export default async function TaskPage({
         <Link href="/tasks" className="text-xs text-gray-500 hover:underline">→ חזרה לרשימה</Link>
         <h1 className="mb-1 mt-2 text-lg font-bold">#{task.id} {task.title}</h1>
         <div className="mb-4 flex items-center gap-2 text-xs text-gray-500">
-          <span className={`rounded-full px-2 py-0.5 ${statusColor(task.status)}`}>{statusLabel(task.status)}</span>
-          {isElad && client && <span>לקוח: {client.full_name || client.username}</span>}
+          <span className={`rounded-full px-2 py-0.5 ${statusClass(current?.color ?? "gray")}`}>{current?.name ?? "—"}</span>
         </div>
 
         <form action={updateTask.bind(null, taskId)} className="space-y-3">
@@ -85,8 +83,8 @@ export default async function TaskPage({
           </div>
           <div>
             <label className="label">סטטוס</label>
-            <select name="status" defaultValue={task.status} className="input" disabled={allowed.length < 2}>
-              {allowed.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            <select name="status_id" defaultValue={task.status_id} className="input" disabled={allowed.length < 2}>
+              {allowed.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="grid grid-cols-2 gap-3">

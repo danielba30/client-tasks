@@ -5,9 +5,8 @@ import { ImportForm } from "./ImportForm";
 export default async function ImportPage() {
   await requireElad();
   const db = createAdminClient();
-  const [{ data: sites }, { data: clients }] = await Promise.all([
+  const [{ data: sites }] = await Promise.all([
     db.from("sites").select("id, name").order("name"),
-    db.from("profiles").select("id, full_name, username").eq("role", "client").order("username"),
   ]);
 
   return (
@@ -18,7 +17,6 @@ export default async function ImportPage() {
         משימות שכבר קיימות (אותה כותרת ונושא, לאותו לקוח ואתר) מדולגות.
       </p>
       <ImportForm
-        clients={(clients ?? []).map((c) => ({ id: c.id, name: c.full_name || c.username }))}
         sites={sites ?? []}
       />
     </div>

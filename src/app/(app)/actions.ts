@@ -2,9 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireElad, requireUser } from "@/lib/auth";
+import { getUserSiteIds, requireElad, requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { STATUSES, statusLabel, type Task } from "@/lib/constants";
+import { getStatuses } from "@/lib/statuses";
+import type { Task } from "@/lib/constants";
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const num = (f: FormData, k: string) => {
@@ -20,19 +21,20 @@ export async function createTask(formData: FormData) {
   const title = str(formData, "title");
   if (!title) return;
 
-  const clientId = user.role === "client" ? user.id : str(formData, "client_id");
+  const siteId = num(formData, "site_id");
+  if (user.role === "client" && (!siteId || !(await getUserSiteIds(user.id)).includes(siteId))) return;
   const row: Record<string, unknown> = {
     title,
     subject: str(formData, "subject"),
-    site_id: num(formData, "site_id"),
-    client_id: clientId,
+    site_id: siteId,
     created_by: user.id,
   };
-  if (user.role === "elad") {
-    row.estimated_hours = num(formData, "estimated_hours");
-    const status = str(formData, "status");
-    if (STATUSES.some((s) => s.value === status)) row.status = status;
-  }
+  const statuses = await getStatuses();
+  const chosen = user.role === "elad" ? statuses.find((s) => s.id === num(formData, "status_id")) : undefined;
+  const initial = chosen ?? statuses.find((s) => s.is_default) ?? statuses[0];
+  if (!initial) throw new Error("לא הוגדרו סטטוסים");
+  row.status_id = initial.id;
+  if (user.role === "elad") row.estimated_hours = num(formData, "estimated_hours");
 
   const { data, error } = await db.from("tasks").insert(row).select("id").single();
   if (error || !data) throw new Error("יצירת המשימה נכשלה");
@@ -50,20 +52,20 @@ export async function updateTask(taskId: number, formData: FormData) {
   const db = createAdminClient();
   const { data: task } = await db.from("tasks").select("*").eq("id", taskId).single<Task>();
   if (!task) return;
-  if (user.role === "client" && task.client_id !== user.id) return;
+  if (user.role === "client" && !(task.site_id && (await getUserSiteIds(user.id)).includes(task.site_id))) return;
 
   const patch: Record<string, unknown> = {};
   const log: string[] = [];
 
-  const newStatus = str(formData, "status");
-  if (newStatus && newStatus !== task.status && STATUSES.some((s) => s.value === newStatus)) {
-    // Clients may only approve a pending task or send a tested task back to work.
-    const clientAllowed =
-      (task.status === "pending_approval" && newStatus === "approved_waiting") ||
-      (task.status === "client_testing" && newStatus === "in_progress");
-    if (user.role === "elad" || clientAllowed) {
-      patch.status = newStatus;
-      log.push(`סטטוס: ${statusLabel(task.status)} ← ${statusLabel(newStatus)}`);
+  const newStatusId = num(formData, "status_id");
+  if (newStatusId && newStatusId !== task.status_id) {
+    const statuses = await getStatuses();
+    const from = statuses.find((s) => s.id === task.status_id);
+    const to = statuses.find((s) => s.id === newStatusId);
+    // Clients may only move tasks that await them, into statuses flagged as client-selectable.
+    if (to && (user.role === "elad" || (from?.awaiting_client && to.client_selectable))) {
+      patch.status_id = to.id;
+      log.push(`סטטוס: ${from?.name ?? "—"} ← ${to.name}`);
     }
   }
 
@@ -125,8 +127,8 @@ export async function addComment(taskId: number, formData: FormData) {
   if (!body) return;
   const db = createAdminClient();
   if (user.role === "client") {
-    const { data } = await db.from("tasks").select("client_id").eq("id", taskId).single();
-    if (data?.client_id !== user.id) return;
+    const { data } = await db.from("tasks").select("site_id").eq("id", taskId).single();
+    if (!data?.site_id || !(await getUserSiteIds(user.id)).includes(data.site_id)) return;
   }
   await db.from("task_events").insert({ task_id: taskId, author_id: user.id, kind: "comment", body });
   await db.from("tasks").update({ updated_at: new Date().toISOString() }).eq("id", taskId);
@@ -195,5 +197,56 @@ export async function deleteUser(userId: string) {
   const me = await requireElad();
   if (userId === me.id) return;
   await createAdminClient().auth.admin.deleteUser(userId); // profile + tasks cascade
+  revalidatePath("/settings");
+}
+
+// ---------- Statuses (Elad only) ----------
+
+const statusFields = (formData: FormData) => ({
+  name: str(formData, "name"),
+  color: str(formData, "color") || "gray",
+  sort_order: num(formData, "sort_order") ?? 0,
+  is_default: formData.get("is_default") === "on",
+  awaiting_client: formData.get("awaiting_client") === "on",
+  client_selectable: formData.get("client_selectable") === "on",
+});
+
+// At most one default status; clear the flag elsewhere when a new one is set.
+async function clearOtherDefaults(exceptId: number) {
+  await createAdminClient().from("statuses").update({ is_default: false }).neq("id", exceptId);
+}
+
+export async function addStatus(formData: FormData) {
+  await requireElad();
+  const fields = statusFields(formData);
+  if (!fields.name) return;
+  const { data } = await createAdminClient().from("statuses").insert(fields).select("id").single();
+  if (data && fields.is_default) await clearOtherDefaults(data.id);
+  revalidatePath("/settings");
+}
+
+export async function updateStatus(id: number, formData: FormData) {
+  await requireElad();
+  const fields = statusFields(formData);
+  if (!fields.name) return;
+  await createAdminClient().from("statuses").update(fields).eq("id", id);
+  if (fields.is_default) await clearOtherDefaults(id);
+  revalidatePath("/settings");
+  revalidatePath("/tasks");
+}
+
+export async function deleteStatus(id: number) {
+  await requireElad();
+  // Restricted by FK: fails (and is ignored) while any task still uses the status.
+  await createAdminClient().from("statuses").delete().eq("id", id);
+  revalidatePath("/settings");
+}
+
+export async function setUserSites(userId: string, formData: FormData) {
+  await requireElad();
+  const db = createAdminClient();
+  const siteIds = formData.getAll("site_ids").map(Number).filter(Boolean);
+  await db.from("user_sites").delete().eq("user_id", userId);
+  if (siteIds.length) await db.from("user_sites").insert(siteIds.map((site_id) => ({ user_id: userId, site_id })));
   revalidatePath("/settings");
 }

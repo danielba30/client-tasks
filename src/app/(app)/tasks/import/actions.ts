@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import { revalidatePath } from "next/cache";
 import { requireElad } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { StatusValue } from "@/lib/constants";
+import { getStatuses } from "@/lib/statuses";
 
 export interface ImportState {
   error?: string;
@@ -13,17 +13,12 @@ export interface ImportState {
   unknownStatuses?: string[];
 }
 
-// Excel "סטטוס" values -> app statuses. Unmapped values fall back to pending_approval.
-const STATUS_MAP: Record<string, StatusValue> = {
-  "ממתין": "pending_approval",
-  "ממתין לאישור לקוח": "pending_approval",
-  "מאושר לקוח": "approved_waiting",
-  "מאושר, ממתין": "approved_waiting",
-  "בעבודה": "in_progress",
-  "חסום": "in_progress",
-  "בדיקות לקוח": "client_testing",
-  "עלה לפרודקשן": "in_production",
-  "עלה לייצור": "in_production",
+// Excel "סטטוס" values that differ from a status name -> the status name they map to.
+const STATUS_ALIASES: Record<string, string> = {
+  "ממתין": "ממתין לאישור לקוח",
+  "מאושר לקוח": "מאושר, ממתין",
+  "חסום": "בעבודה",
+  "עלה לפרודקשן": "עלה לייצור",
 };
 
 function cellText(v: ExcelJS.CellValue): string {
@@ -46,10 +41,9 @@ function cellNumber(v: ExcelJS.CellValue): number | null {
 export async function importTasks(_prev: ImportState, formData: FormData): Promise<ImportState> {
   const me = await requireElad();
   const file = formData.get("file");
-  const clientId = String(formData.get("client_id") ?? "");
   const siteId = Number(formData.get("site_id")) || null;
   if (!(file instanceof File) || file.size === 0) return { error: "נא לבחור קובץ אקסל" };
-  if (!clientId) return { error: "נא לבחור לקוח" };
+  if (!siteId) return { error: "נא לבחור אתר" };
 
   const wb = new ExcelJS.Workbook();
   try {
@@ -68,10 +62,11 @@ export async function importTasks(_prev: ImportState, formData: FormData): Promi
   if (!col["משימה"] && !col["נושא כללי"]) return { error: "לא נמצאו העמודות 'משימה' / 'נושא כללי' בשורה הראשונה" };
   const get = (row: ExcelJS.Row, name: string) => (col[name] ? row.getCell(col[name]).value : null);
 
+  const statuses = await getStatuses();
+  const fallback = statuses.find((s) => s.is_default) ?? statuses[0];
+  if (!fallback) return { error: "לא הוגדרו סטטוסים" };
   const db = createAdminClient();
-  let q = db.from("tasks").select("title, subject").eq("client_id", clientId);
-  q = siteId ? q.eq("site_id", siteId) : q.is("site_id", null);
-  const { data: existing } = await q;
+  const { data: existing } = await db.from("tasks").select("title, subject").eq("site_id", siteId);
   const seen = new Set((existing ?? []).map((t) => `${t.title}|${t.subject}`));
 
   const unknown = new Set<string>();
@@ -92,7 +87,9 @@ export async function importTasks(_prev: ImportState, formData: FormData): Promi
     seen.add(`${title}|${subject}`);
 
     const rawStatus = cellText(get(row, "סטטוס"));
-    const status = STATUS_MAP[rawStatus];
+    const status =
+      statuses.find((s) => s.name === rawStatus) ??
+      statuses.find((s) => s.name === STATUS_ALIASES[rawStatus]);
     if (rawStatus && !status) unknown.add(rawStatus);
 
     const estRaw = get(row, "הערכת שעות");
@@ -115,8 +112,7 @@ export async function importTasks(_prev: ImportState, formData: FormData): Promi
       title,
       subject: task ? subject : "",
       site_id: siteId,
-      client_id: clientId,
-      status: status ?? "pending_approval",
+      status_id: (status ?? fallback).id,
       estimated_hours: est,
       billed: cellText(billedRaw) !== "",
       created_by: me.id,

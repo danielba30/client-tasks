@@ -5,28 +5,19 @@ import { useActionState } from "react";
 import { importTasks, type ImportState } from "./actions";
 
 export function ImportForm({
-  clients,
   sites,
 }: {
-  clients: { id: string; name: string }[];
   sites: { id: number; name: string }[];
 }) {
   const [state, action, pending] = useActionState(importTasks, {} as ImportState);
 
   return (
     <form action={action} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div>
         <div>
-          <label className="label">לקוח</label>
-          <select name="client_id" className="input" required defaultValue="">
-            <option value="" disabled>בחר לקוח</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">אתר (יוחל על כל המשימות בקובץ)</label>
-          <select name="site_id" className="input" defaultValue="">
-            <option value="">ללא</option>
+          <label className="label">אתר / לקוח (יוחל על כל המשימות בקובץ)</label>
+          <select name="site_id" className="input" required defaultValue="">
+            <option value="" disabled>בחר אתר</option>
             {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
@@ -45,7 +36,7 @@ export function ImportForm({
           <Link href="/tasks" className="underline">למשימות</Link>
           {!!state.unknownStatuses?.length && (
             <p className="mt-1 text-amber-800">
-              סטטוסים לא מוכרים הוגדרו כ"ממתין לאישור לקוח": {state.unknownStatuses.join(", ")}
+              סטטוסים לא מוכרים הוגדרו כסטטוס ברירת המחדל: {state.unknownStatuses.join(", ")}
             </p>
           )}
         </div>
