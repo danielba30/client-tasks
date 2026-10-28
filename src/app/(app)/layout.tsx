@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <>
       <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
+        <div className="mx-auto flex max-w-[1800px] items-center gap-6 px-4 py-3">
           <Link href="/tasks" className="font-bold">ניהול משימות</Link>
           <nav className="flex gap-4 text-sm">
             <Link href="/tasks" className="hover:underline">משימות</Link>
@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-[1800px] px-4 py-6">{children}</main>
     </>
   );
 }

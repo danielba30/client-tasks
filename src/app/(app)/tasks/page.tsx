@@ -19,11 +19,15 @@ export default async function TasksPage({
   if (status) q = q.eq("status_id", Number(status));
   if (site) q = q.eq("site_id", Number(site));
 
-  const [{ data: tasks }, { data: sites }, statuses] = await Promise.all([
+  const [{ data: tasks }, { data: sites }, statuses, { data: noteEvents }] = await Promise.all([
     q.returns<Task[]>(),
     db.from("sites").select("id, name").order("name"),
     getStatuses(),
+    // Extra Excel columns (notes, client notes, version...) imported as the first comment of a task.
+    db.from("task_events").select("task_id, body").eq("kind", "comment").like("body", "נתונים מהאקסל:%"),
   ]);
+  const notes: Record<number, string> = {};
+  for (const e of noteEvents ?? []) notes[e.task_id] = e.body.replace(/^נתונים מהאקסל:\n?/, "");
 
   return (
     <div>
@@ -49,6 +53,7 @@ export default async function TasksPage({
         initialTasks={tasks ?? []}
         statuses={statuses}
         siteNames={Object.fromEntries((sites ?? []).map((s) => [s.id, s.name]))}
+        notes={notes}
         isElad={user.role === "elad"}
       />
     </div>

@@ -10,11 +10,13 @@ export function TaskTable({
   initialTasks,
   statuses,
   siteNames,
+  notes,
   isElad,
 }: {
   initialTasks: Task[];
   statuses: Status[];
   siteNames: Record<number, string>;
+  notes: Record<number, string>;
   isElad: boolean;
 }) {
   const router = useRouter();
@@ -79,11 +81,11 @@ export function TaskTable({
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
       <div className="overflow-x-auto rounded-lg bg-white shadow-sm">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[1100px] table-fixed text-sm">
           <thead className="border-b bg-gray-50 text-xs text-gray-500">
             <tr>
               {isElad && (
-                <th className="w-8 p-3">
+                <th className="w-10 p-3">
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -92,14 +94,15 @@ export function TaskTable({
                   />
                 </th>
               )}
-              <th className="p-3 text-start">#</th>
-              <th className="p-3 text-start">כותרת</th>
-              <th className="p-3 text-start">נושא</th>
-              <th className="p-3 text-start">אתר / לקוח</th>
-              <th className="p-3 text-start">סטטוס</th>
-              <th className="p-3 text-start">הערכה</th>
-              <th className="p-3 text-start">בפועל</th>
-              <th className="p-3 text-start">חויב</th>
+              <th className="w-14 p-3 text-start">#</th>
+              <th className="w-[22%] p-3 text-start">כותרת</th>
+              <th className="w-[12%] p-3 text-start">נושא</th>
+              <th className="w-24 p-3 text-start">אתר / לקוח</th>
+              <th className="w-40 p-3 text-start">סטטוס</th>
+              <th className="w-24 p-3 text-start">הערכה</th>
+              <th className="w-24 p-3 text-start">בפועל</th>
+              <th className="w-16 p-3 text-start">חויב</th>
+              <th className="p-3 text-start">הערות ונתונים נוספים</th>
             </tr>
           </thead>
           <tbody>
@@ -109,17 +112,17 @@ export function TaskTable({
                 (s) => isElad || s.id === t.status_id || (current?.awaiting_client && s.client_selectable),
               );
               return (
-                <tr key={t.id} className="border-b last:border-0 hover:bg-gray-50">
+                <tr key={t.id} className="border-b align-top last:border-0 hover:bg-gray-50">
                   {isElad && (
                     <td className="p-3">
                       <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
                     </td>
                   )}
                   <td className="p-3 text-gray-400">{t.id}</td>
-                  <td className="p-3 font-medium">
+                  <td className="break-words p-3 font-medium">
                     <Link href={`/tasks/${t.id}`} className="text-indigo-700 hover:underline">{t.title}</Link>
                   </td>
-                  <td className="p-3">{t.subject}</td>
+                  <td className="break-words p-3">{t.subject}</td>
                   <td className="p-3">{t.site_id ? siteNames[t.site_id] ?? "—" : "—"}</td>
                   <td className="p-3">
                     {options.length > 1 ? (
@@ -155,11 +158,12 @@ export function TaskTable({
                       <input type="checkbox" checked={t.billed} onChange={(e) => save(t.id, { billed: e.target.checked })} />
                     ) : t.billed ? "כן" : "לא"}
                   </td>
+                  <td className="whitespace-pre-wrap break-words p-3 text-xs text-gray-600">{notes[t.id] ?? ""}</td>
                 </tr>
               );
             })}
             {!tasks.length && (
-              <tr><td colSpan={isElad ? 9 : 8} className="p-8 text-center text-gray-400">אין משימות</td></tr>
+              <tr><td colSpan={isElad ? 10 : 9} className="p-8 text-center text-gray-400">אין משימות</td></tr>
             )}
           </tbody>
         </table>
